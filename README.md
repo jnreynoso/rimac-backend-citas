@@ -9,10 +9,11 @@ Este proyecto implementa una solución backend serverless para agendar citas mé
 ## 📚 Descripción Técnica
 
 La aplicación permite a un asegurado:
-- Agendar una cita médica (estado inicial: `pending`).
+- Agendar una cita médica (estado inicial: `pending` en DynamoDB).
 - Consultar sus citas registradas.
 - Procesar las citas dependiendo del país (`PE` o `CL`).
-- Confirmar el agendamiento finalizando el estado como `completed`.
+- Guardar los datos procesados en una base de datos MySQL (RDS).
+- Confirmar el agendamiento finalizando el estado como `completed` en DynamoDB.
 
 ---
 
@@ -21,29 +22,32 @@ La aplicación permite a un asegurado:
 El flujo general de la aplicación es:
 
 1. **POST** solicitud de cita → Lambda `appointment` guarda en DynamoDB (`pending`).
-2. **Lambda `appointment`** envía el evento a **SNS**.
-3. **SNS** enruta el evento a **SQS_PE** o **SQS_CL** según el país (`countryISO`).
-4. **Lambdas `appointment_pe` o `appointment_cl`** leen su respectivo SQS y almacenan en una base de datos **RDS (MySQL)**.
-5. **Las lambdas PE/CL** envían una confirmación a **EventBridge**.
-6. **EventBridge** enruta la confirmación a un **SQS** de confirmaciones.
-7. **Lambda `appointment`** lee del SQS de confirmaciones y actualiza el estado de la cita en **DynamoDB** como `completed`.
+2. **Lambda `appointment`** publica el evento en un **SNS Topic**.
+3. **SNS** enruta el evento a **SQS_PE** o **SQS_CL** según `countryISO`.
+4. **Lambdas `appointment_pe` o `appointment_cl`**:
+   - Leen el mensaje desde su respectivo SQS.
+   - Guardan la cita en una base de datos **MySQL (RDS)**.
+   - Publican un evento de confirmación en **EventBridge**.
+5. **EventBridge** enruta el evento a una **SQS de confirmaciones**.
+6. **Lambda `appointment`** escucha el SQS de confirmaciones y actualiza la cita en **DynamoDB** como `completed`.
 
 ---
 
 ## 🗂️ Infraestructura AWS
 
-- **API Gateway** → para exponer endpoints HTTP.
+- **API Gateway** → Exponer endpoints HTTP.
 - **Lambda Functions**:
-  - `appointment` (POST / GET / update estado).
+  - `appointment` (POST/GET citas, escuchar confirmaciones de EventBridge).
   - `appointment_pe` (procesar citas Perú).
   - `appointment_cl` (procesar citas Chile).
-- **DynamoDB**: almacenamiento temporal de agendamientos (estado `pending` / `completed`).
-- **SNS Topics**: distribución de mensajes según país.
+- **DynamoDB**: almacenamiento temporal de agendamientos (`pending`/`completed`).
+- **SNS Topic**: distribución de mensajes según país.
 - **SQS Queues**:
-  - `SQS_PE`: cola para agendamientos de Perú.
-  - `SQS_CL`: cola para agendamientos de Chile.
-  - `SQS_CONFIRMATIONS`: cola para eventos de confirmación.
+  - `SQS_PE`: cola para citas de Perú.
+  - `SQS_CL`: cola para citas de Chile.
+  - `SQS_CONFIRMATIONS`: cola para confirmaciones.
 - **EventBridge**: distribución de eventos de confirmación.
+- **RDS MySQL**: almacenamiento definitivo de citas.
 
 ---
 
@@ -65,7 +69,7 @@ El flujo general de la aplicación es:
 - **Response:**
 ```json
 {
-  "message": "Appointment created successfully"
+  "message": "Appointment created and published to SNS successfully"
 }
 ```
 
@@ -90,6 +94,8 @@ El flujo general de la aplicación es:
 ]
 ```
 
+*(Si ya fue procesado y confirmado, el `status` será `completed`.)*
+
 ---
 
 ## 🛠️ Setup Local
@@ -107,7 +113,23 @@ cd rimac-backend-citas
 npm install
 ```
 
-### 3. Levantar entorno local
+### 3. Configurar variables de entorno en `serverless.yml`
+
+Modificar en `serverless.yml` las variables de RDS:
+
+```yaml
+provider:
+  environment:
+    RDS_HOST: tu-host
+    RDS_PORT: 3306
+    RDS_USER: tu-usuario
+    RDS_PASSWORD: tu-contraseña
+    RDS_DATABASE: tu-bd
+```
+
+*(Simular si no tienes una base de datos real.)*
+
+### 4. Levantar entorno local
 
 ```bash
 npx serverless offline
@@ -122,7 +144,7 @@ http://localhost:3000
 
 ## 🚀 Despliegue en AWS
 
-Asegúrate de tener configuradas tus credenciales de AWS.
+Asegúrate de tener configuradas tus credenciales de AWS CLI:
 
 ```bash
 npx serverless deploy
@@ -142,11 +164,23 @@ npm run test
 
 ---
 
+## 🧪 Cómo probar el flujo completo manualmente
+
+1. **Crear cita** (POST `/appointments`)
+2. **Verificar cita** (GET `/appointments/{insuredId}` ➔ debe tener `status: pending`)
+3. **Esperar procesamiento automático**:
+   - Lambda `appointment_pe` o `appointment_cl` procesa la cita.
+   - Se confirma vía EventBridge.
+   - Lambda `appointment` actualiza el `status` a `completed`.
+4. **Consultar de nuevo** (GET `/appointments/{insuredId}` ➔ ahora debe tener `status: completed`).
+
+---
+
 ## 📝 Documentación OpenAPI (Swagger)
 
 Se encuentra el archivo `openapi.yaml` en la raíz del proyecto.
 
-Puedes visualizarlo usando cualquier visor de Swagger (por ejemplo, [Swagger Editor](https://editor.swagger.io/)).
+Puedes visualizarlo usando [Swagger Editor](https://editor.swagger.io/).
 
 La documentación incluye:
 - Request/Response de los endpoints.
@@ -172,13 +206,10 @@ La documentación incluye:
 
 ## 📋 Consideraciones
 
-- No se implementó reintentos ni fallback en caso de error.
-- No se maneja la lógica de reenvío de correo de confirmación (fuera del alcance del reto).
-- Se asumió que el RDS ya existe y está configurado.
+- No se implementaron reintentos en caso de error (flujo "happy path").
+- No se implementó el envío de correos electrónicos.
+- Se asumió que la base de datos RDS MySQL ya existe.
 
 ---
 
-# ✨ Autor
-
-Desarrollado como solución para el **Reto Técnico Backend Rimac 2024**.
 

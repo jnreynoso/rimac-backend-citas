@@ -1,23 +1,45 @@
-import { APIGatewayProxyHandler } from "aws-lambda";
+import { APIGatewayProxyHandler, SQSEvent } from "aws-lambda";
 import { DynamoAppointmentRepository } from "../repositories/DynamoAppointmentRepository";
 import { AppointmentService } from "../../application/services/AppointmentService";
-import { v4 as uuidv4 } from 'uuid';
+import { SNS } from "aws-sdk";
 
 const repository = new DynamoAppointmentRepository();
 const service = new AppointmentService(repository);
+const sns = new SNS();
+
+const snsTopicArn = process.env.SNS_TOPIC_ARN!;
 
 export const main: APIGatewayProxyHandler = async (event) => {
   if (event.httpMethod === "POST") {
     const body = JSON.parse(event.body!);
+
+    // 1. Guardar en DynamoDB
     await service.createAppointment({
       insuredId: body.insuredId,
       scheduleId: body.scheduleId,
       countryISO: body.countryISO,
       status: "pending",
     });
+
+    // 2. Publicar al SNS
+    await sns.publish({
+      TopicArn: snsTopicArn,
+      Message: JSON.stringify({
+        insuredId: body.insuredId,
+        scheduleId: body.scheduleId,
+        countryISO: body.countryISO,
+      }),
+      MessageAttributes: {
+        countryISO: {
+          DataType: "String",
+          StringValue: body.countryISO
+        }
+      }
+    }).promise();
+
     return {
       statusCode: 201,
-      body: JSON.stringify({ message: "Appointment created successfully" }),
+      body: JSON.stringify({ message: "Appointment created and published to SNS successfully" }),
     };
   }
 
@@ -35,4 +57,3 @@ export const main: APIGatewayProxyHandler = async (event) => {
 
   return { statusCode: 405, body: "Method Not Allowed" };
 };
-
