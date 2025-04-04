@@ -1,0 +1,114 @@
+service: rimac-backend-citas
+
+frameworkVersion: '3'
+
+plugins:
+  - serverless-offline
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  environment:
+    DYNAMO_TABLE_NAME: Appointments
+    RDS_HOST: your-rds-host
+    RDS_PORT: 3306
+    RDS_USER: your-user
+    RDS_PASSWORD: your-password
+    RDS_DATABASE: your-database
+
+functions:
+  appointment:
+    handler: src/infrastructure/handlers/appointmentHandler.main
+    events:
+      - http:
+          path: appointments
+          method: post
+      - http:
+          path: appointments/{insuredId}
+          method: get
+
+  appointment_pe:
+    handler: src/infrastructure/handlers/appointmentPEHandler.main
+    events:
+      - sqs:
+          arn: arn:aws:sqs:us-east-1:YOUR_ACCOUNT_ID:SQS_PE
+
+  appointment_cl:
+    handler: src/infrastructure/handlers/appointmentCLHandler.main
+    events:
+      - sqs:
+          arn: arn:aws:sqs:us-east-1:YOUR_ACCOUNT_ID:SQS_CL
+
+resources:
+  Resources:
+    AppointmentsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMO_TABLE_NAME}
+        AttributeDefinitions:
+          - AttributeName: insuredId
+            AttributeType: S
+          - AttributeName: scheduleId
+            AttributeType: N
+        KeySchema:
+          - AttributeName: insuredId
+            KeyType: HASH
+          - AttributeName: scheduleId
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+
+service: rimac-backend-citas
+
+frameworkVersion: '3'
+
+plugins:
+  - serverless-offline
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  environment:
+    DYNAMO_TABLE_NAME: Appointments
+
+functions:
+  appointment:
+    handler: src/infrastructure/handlers/appointmentHandler.main
+    events:
+      - http:
+          path: appointments
+          method: post
+      - http:
+          path: appointments/{insuredId}
+          method: get
+
+  appointment_pe:
+    handler: src/infrastructure/handlers/appointmentPEHandler.main
+    events:
+      - sqs:
+          arn: arn:aws:sqs:us-east-1:YOUR_ACCOUNT_ID:SQS_PE
+
+  appointment_cl:
+    handler: src/infrastructure/handlers/appointmentCLHandler.main
+    events:
+      - sqs:
+          arn: arn:aws:sqs:us-east-1:YOUR_ACCOUNT_ID:SQS_CL
+
+resources:
+  Resources:
+    AppointmentsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMO_TABLE_NAME}
+        AttributeDefinitions:
+          - AttributeName: insuredId
+            AttributeType: S
+          - AttributeName: scheduleId
+            AttributeType: N
+        KeySchema:
+          - AttributeName: insuredId
+            KeyType: HASH
+          - AttributeName: scheduleId
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
