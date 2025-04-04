@@ -1,0 +1,106 @@
+openapi: 3.0.3
+info:
+  title: Rimac Backend Citas API
+  description: API para el agendamiento de citas médicas para asegurados en Perú y Chile.
+  version: 1.0.0
+servers:
+  - url: https://{apiId}.execute-api.{region}.amazonaws.com/{stage}
+    variables:
+      apiId:
+        default: your-api-id
+      region:
+        default: us-east-1
+      stage:
+        default: dev
+
+paths:
+  /appointments:
+    post:
+      summary: Crear una nueva cita médica
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppointment'
+      responses:
+        '201':
+          description: Cita creada exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Error en la solicitud
+    get:
+      summary: Endpoint no disponible (GET se maneja en /appointments/{insuredId})
+      responses:
+        '405':
+          description: Método no permitido
+
+  /appointments/{insuredId}:
+    get:
+      summary: Listar las citas médicas de un asegurado
+      parameters:
+        - name: insuredId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Listado de citas médicas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Appointment'
+        '400':
+          description: insuredId no proporcionado
+        '404':
+          description: No se encontraron citas para el insuredId
+
+components:
+  schemas:
+    CreateAppointment:
+      type: object
+      required:
+        - insuredId
+        - scheduleId
+        - countryISO
+      properties:
+        insuredId:
+          type: string
+          example: "00012"
+        scheduleId:
+          type: integer
+          example: 100
+        countryISO:
+          type: string
+          enum:
+            - PE
+            - CL
+          example: "PE"
+    Appointment:
+      type: object
+      properties:
+        insuredId:
+          type: string
+          example: "00012"
+        scheduleId:
+          type: integer
+          example: 100
+        countryISO:
+          type: string
+          example: "PE"
+        status:
+          type: string
+          enum:
+            - pending
+            - completed
+          example: "pending"
+
